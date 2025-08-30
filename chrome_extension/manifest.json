@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "IG Story Downloader",
+  "version": "1.0.1",
+  "description": "Download Instagram Posts, Reels, and Stories locally (requires local backend).",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://www.instagram.com/*",
+    "http://localhost:5000/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "instagram.png",
+      "48": "instagram.png",
+      "128": "instagram.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

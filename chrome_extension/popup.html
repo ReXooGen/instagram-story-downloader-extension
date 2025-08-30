@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>IG Story Downloader</title>
+  <style>
+    :root { --bg:#0f1115; --card:#1b1f27; --accent:#ff2d55; --accent-grad:linear-gradient(90deg,#ff2d55,#ff8a00); --text:#f5f6f7; --muted:#8b92a1; --border:#2a303b; }
+    body { font-family: "Segoe UI", Arial, sans-serif; width:320px; margin:0; padding:14px 14px 16px; background:var(--bg); color:var(--text); }
+    h2 { margin:0 0 12px; font-size:18px; letter-spacing:.5px; background:var(--accent-grad); -webkit-background-clip:text; color:transparent; }
+    fieldset { border:1px solid var(--border); border-radius:8px; padding:10px 12px 14px; margin:0 0 14px; background:var(--card); }
+    legend { padding:0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--muted); }
+    input[type=text], input[type=password], input[type=number] { width:100%; box-sizing:border-box; background:#12151b; border:1px solid var(--border); color:var(--text); padding:8px 9px; border-radius:6px; font-size:13px; outline:none; transition:border .15s, background .15s; }
+    input:focus { border-color:var(--accent); background:#161a22; }
+    label.inline { display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; user-select:none; }
+    .row { display:flex; gap:8px; }
+    .row > * { flex:1; }
+    button { width:100%; margin-top:10px; background:var(--accent-grad); border:none; color:#fff; padding:10px 12px; border-radius:8px; font-weight:600; cursor:pointer; font-size:13px; letter-spacing:.3px; box-shadow:0 2px 4px rgba(0,0,0,.4); transition:opacity .2s, transform .15s; }
+    button:hover { opacity:.9; }
+    button:active { transform:translateY(1px); }
+    hr { border:none; border-top:1px solid var(--border); margin:10px 0 14px; }
+    #result, #loginStatus { font-size:11px; white-space:pre-line; margin-top:8px; line-height:1.4; color:var(--muted); }
+    .choices { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:8px; }
+    .choice { background:#12151b; border:1px solid var(--border); padding:6px 6px 7px; border-radius:6px; display:flex; align-items:center; gap:4px; font-size:11px; cursor:pointer; }
+    .choice input { margin:0; }
+    .choice:hover { border-color:var(--accent); }
+    footer { margin-top:12px; text-align:center; font-size:10px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <h2>IG Story Downloader</h2>
+  <fieldset>
+    <legend>Login (optional for private / full data)</legend>
+    <input type="text" id="loginUser" placeholder="Login Username" />
+    <input type="password" id="loginPass" placeholder="Password" />
+    <button id="loginBtn">Login</button>
+    <div id="loginStatus"></div>
+  </fieldset>
+  <hr />
+  <input type="text" id="username" placeholder="Target Username" />
+  <div class="row" style="margin-top:6px;">
+    <input type="number" id="limitInput" placeholder="Post/Reel Limit" min="1" />
+    <input type="number" id="delayInput" placeholder="Delay" min="0" step="0.5" />
+  </div>
+  <div class="row" style="margin-top:6px;">
+    <input type="number" id="storyLimitInput" placeholder="Story Limit" min="1" />
+    <input type="number" id="backoffInput" placeholder="Backoff" min="1" />
+  </div>
+  <div class="choices">
+    <label class="choice"><input type="checkbox" id="postsCheckbox" checked /> Posts</label>
+    <label class="choice"><input type="checkbox" id="reelsCheckbox" checked /> Reels</label>
+    <label class="choice"><input type="checkbox" id="storiesCheckbox" /> Stories</label>
+  </div>
+  <button id="downloadBtn">Download Selected</button>
+  <div id="result"></div>
+  <footer>Select posts / reels / stories</footer>
+  <script src="popup.js"></script>
+</body>
+</html>
