@@ -61,9 +61,28 @@ def download_media(target_username: str,
     # Try to get profile with better error handling
     try:
         profile = instastorysaver.Profile.from_username(L.context, target_username)
+        L.context.log(f"Profile loaded: {target_username}")
+        L.context.log(f"Profile info - Posts: {profile.mediacount}, Private: {profile.is_private}")
+        
+        # Check if profile is private and we need login
+        if profile.is_private and not L.context.is_logged_in:
+            raise instastorysaver.exceptions.LoginRequiredException(
+                f"Profile '{target_username}' is private and requires login"
+            )
+            
     except Exception as e:
         error_msg = str(e).lower()
-        if "challenge_required" in error_msg:
+        L.context.log(f"Profile loading error: {e}")
+        
+        # Check for rate limiting specifically
+        if "please wait a few minutes" in error_msg or ("401 unauthorized" in error_msg and "fail" in error_msg):
+            raise instastorysaver.exceptions.ConnectionException(
+                f"Instagram is heavily rate limiting your account. "
+                f"This is why no posts are being detected. "
+                f"Please wait 30-60 minutes before trying again. "
+                f"Consider using the extension less frequently to avoid this."
+            )
+        elif "challenge_required" in error_msg:
             raise instastorysaver.exceptions.ConnectionException(
                 f"Instagram requires additional verification for this account. "
                 f"Try logging in through a web browser first, complete any challenges, "
@@ -89,41 +108,74 @@ def download_media(target_username: str,
     stats: Dict[str, int] = {"posts_downloaded": 0, "reels_downloaded": 0, "rate_limit_retries": 0}
     posts_meta: List[dict] = []
     count = 0
-    for post in profile.get_posts():
-        if count >= limit:
-            break
-        is_reel_candidate = bool(post.is_video)
-        if (is_reel_candidate and not include_reels) or ((not is_reel_candidate) and not include_posts):
-            continue
-        attempt = 0
-        while True:
-            try:
-                sub = 'reels' if is_reel_candidate else 'posts'
-                L.download_post(post, target=sub)
-                posts_meta.append({
-                    'shortcode': post.shortcode,
-                    'date_utc': post.date_utc.isoformat(),
-                    'is_video': post.is_video,
-                    'type': 'reel' if is_reel_candidate else 'post'
-                })
-                if is_reel_candidate:
-                    stats['reels_downloaded'] += 1
-                else:
-                    stats['posts_downloaded'] += 1
+    
+    try:
+        L.context.log(f"Starting to fetch posts for {target_username} (limit: {limit})")
+        post_iterator = profile.get_posts()
+        L.context.log("Post iterator created successfully")
+        
+        posts_found = 0
+        for post in post_iterator:
+            posts_found += 1
+            L.context.log(f"Processing post {posts_found}: {post.shortcode} (is_video: {post.is_video})")
+            
+            if count >= limit:
+                L.context.log(f"Reached limit of {limit} posts")
                 break
-            except instastorysaver.exceptions.ConnectionException as ce:
-                attempt += 1
-                stats['rate_limit_retries'] += 1
-                time.sleep(backoff * attempt)
-                if attempt >= 3:
-                    posts_meta.append({'error': str(ce)})
+                
+            is_reel_candidate = bool(post.is_video)
+            if (is_reel_candidate and not include_reels) or ((not is_reel_candidate) and not include_posts):
+                L.context.log(f"Skipping post {post.shortcode} due to type filter")
+                continue
+                
+            attempt = 0
+            while True:
+                try:
+                    sub = 'reels' if is_reel_candidate else 'posts'
+                    L.context.log(f"Downloading {post.shortcode} to {sub}")
+                    L.download_post(post, target=sub)
+                    posts_meta.append({
+                        'shortcode': post.shortcode,
+                        'date_utc': post.date_utc.isoformat(),
+                        'is_video': post.is_video,
+                        'type': 'reel' if is_reel_candidate else 'post'
+                    })
+                    if is_reel_candidate:
+                        stats['reels_downloaded'] += 1
+                    else:
+                        stats['posts_downloaded'] += 1
+                    L.context.log(f"Successfully downloaded {post.shortcode}")
                     break
-            except Exception as e:
-                posts_meta.append({'error': str(e)})
-                break
-        count += 1
-        if delay > 0:
-            time.sleep(delay)
+                except instastorysaver.exceptions.ConnectionException as ce:
+                    attempt += 1
+                    stats['rate_limit_retries'] += 1
+                    L.context.log(f"Rate limit hit for {post.shortcode}, attempt {attempt}")
+                    time.sleep(backoff * attempt)
+                    if attempt >= 3:
+                        L.context.log(f"Max retries reached for {post.shortcode}")
+                        posts_meta.append({'error': str(ce), 'shortcode': post.shortcode})
+                        break
+                except Exception as e:
+                    L.context.log(f"Error downloading {post.shortcode}: {e}")
+                    posts_meta.append({'error': str(e), 'shortcode': post.shortcode})
+                    break
+            count += 1
+            if delay > 0:
+                time.sleep(delay)
+                
+        L.context.log(f"Total posts found: {posts_found}, downloaded: {count}")
+        
+        if posts_found == 0:
+            L.context.log("No posts found - this could be due to:")
+            L.context.log("1. Private account requiring login")
+            L.context.log("2. Instagram anti-bot protection")
+            L.context.log("3. Rate limiting")
+            L.context.log("4. Account genuinely has no posts")
+            
+    except Exception as e:
+        L.context.log(f"Error during post iteration: {e}")
+        posts_meta.append({'error': f'Post iteration failed: {str(e)}'})
+        # Don't raise here, continue to stories if needed
 
     stories_meta: List[dict] = []
     stories_status = 'not_requested'
@@ -166,7 +218,13 @@ def download_media(target_username: str,
         'stories_meta': stories_meta,
         'stories_status': stories_status,
         'stats': stats,
-        'count': count
+        'count': count,
+        'profile_info': {
+            'username': target_username,
+            'mediacount': profile.mediacount if 'profile' in locals() else 'unknown',
+            'is_private': profile.is_private if 'profile' in locals() else 'unknown',
+            'logged_in': L.context.is_logged_in
+        }
     }
 
 
@@ -232,15 +290,40 @@ def login():
         else:
             L.context.log("Attempting login with username/password...")
             try:
-                L.load_session_from_file(ig_user)  # try existing session file first
-                if not L.context.is_logged_in or L.test_login() != ig_user:
-                    L.context.log("Session file invalid or for different user, logging in fresh...")
-                    L.login(ig_user, ig_pass)
+                # Try to load existing session
+                L.load_session_from_file(ig_user)
+                if L.context.is_logged_in:
+                    # Test if session is still valid with a simple check
                     try:
-                        L.save_session_to_file()
-                    except Exception as save_err:
-                        L.context.log(f"Warning: Could not save session to file: {save_err}")
-                        # Continue anyway - login was successful
+                        # Try a simple operation that doesn't trigger rate limits
+                        current_username = L.test_login()
+                        if current_username == ig_user:
+                            L.context.log(f"Valid session found for {ig_user}")
+                            _LOGIN_USER = ig_user
+                            return jsonify({"message": f"Logged in as {ig_user} (existing session)", "logged_in": True})
+                        else:
+                            L.context.log(f"Session for different user ({current_username}), need fresh login")
+                    except Exception as session_test_err:
+                        # If testing fails due to rate limiting, don't immediately invalidate
+                        if "Please wait a few minutes" in str(session_test_err) or "401 Unauthorized" in str(session_test_err):
+                            L.context.log(f"Rate limited during session test, but session might still be valid")
+                            _LOGIN_USER = ig_user
+                            return jsonify({
+                                "message": f"Logged in as {ig_user} (session loaded, rate limited)", 
+                                "logged_in": True,
+                                "warning": "Instagram is rate limiting - session may work for downloads"
+                            })
+                        else:
+                            L.context.log(f"Session test failed: {session_test_err}")
+                
+                # If no valid session or session test failed, try fresh login
+                L.context.log("Attempting fresh login...")
+                L.login(ig_user, ig_pass)
+                try:
+                    L.save_session_to_file()
+                except Exception as save_err:
+                    L.context.log(f"Warning: Could not save session to file: {save_err}")
+                    
             except FileNotFoundError:
                 # No existing session file, try fresh login
                 L.context.log("No existing session file, logging in fresh...")
@@ -250,12 +333,20 @@ def login():
                 except Exception as save_err:
                     L.context.log(f"Warning: Could not save session to file: {save_err}")
             except Exception as session_err:
-                L.context.log(f"Session file error: {session_err}, trying fresh login...")
-                L.login(ig_user, ig_pass)
-                try:
-                    L.save_session_to_file()
-                except Exception as save_err:
-                    L.context.log(f"Warning: Could not save session to file: {save_err}")
+                L.context.log(f"Session file error: {session_err}")
+                # Don't immediately try fresh login if it's a rate limit error
+                if "Please wait a few minutes" in str(session_err) or "401 Unauthorized" in str(session_err):
+                    return jsonify({
+                        "error": "Instagram is currently rate limiting requests. Please wait 10-15 minutes before trying to login again.",
+                        "rate_limited": True
+                    }), 429
+                else:
+                    L.context.log("Trying fresh login...")
+                    L.login(ig_user, ig_pass)
+                    try:
+                        L.save_session_to_file()
+                    except Exception as save_err:
+                        L.context.log(f"Warning: Could not save session to file: {save_err}")
                     
             _LOGIN_USER = ig_user
             return jsonify({"message": f"Logged in as {ig_user}", "logged_in": True})
@@ -298,12 +389,49 @@ def logout():
 @app.route('/status')
 def status():
     """Get current login status."""
-    L = get_loader()
-    return jsonify({
-        "logged_in": L.context.is_logged_in,
-        "logged_in_as": _LOGIN_USER,
-        "status": "ok"
-    })
+    global L, _LOGIN_USER
+    
+    try:
+        L = get_loader()
+        if not L.context.is_logged_in:
+            return jsonify({
+                "logged_in": False,
+                "logged_in_as": None,
+                "status": "not_logged_in"
+            })
+        
+        # Try to verify session is still valid
+        try:
+            current_username = L.test_login()
+            return jsonify({
+                "logged_in": True,
+                "logged_in_as": current_username,
+                "status": "ok"
+            })
+        except Exception as e:
+            error_str = str(e)
+            # If it's a rate limiting error, still consider as logged in
+            if "Please wait a few minutes" in error_str or "401 Unauthorized" in error_str:
+                return jsonify({
+                    "logged_in": True,
+                    "logged_in_as": _LOGIN_USER or "Unknown",
+                    "status": "rate_limited",
+                    "warning": "Rate limited - session may still work for downloads"
+                })
+            else:
+                return jsonify({
+                    "logged_in": False,
+                    "logged_in_as": None,
+                    "status": "session_error",
+                    "error": error_str
+                })
+    except Exception as e:
+        return jsonify({
+            "logged_in": False,
+            "logged_in_as": None,
+            "status": "error",
+            "error": str(e)
+        })
 
 
 @app.route('/download')
@@ -323,13 +451,30 @@ def download():  # type: ignore
     include_stories = request.args.get('stories', '0') in ('1', 'true', 'yes')
     try:
         result = download_media(target, limit, include_posts, include_reels, include_stories, delay, backoff, stories_limit)
+        
+        # Enhanced response message
+        profile_info = result.get('profile_info', {})
+        profile_mediacount = profile_info.get('mediacount', 'unknown')
+        profile_private = profile_info.get('is_private', 'unknown')
+        
+        message_parts = [f'Downloaded {result["count"]} posts/reels for {target}']
+        if include_stories:
+            message_parts.append('+ stories')
+        message_parts.append(f'Posts:{result["stats"]["posts_downloaded"]} Reels:{result["stats"]["reels_downloaded"]} RateRetries:{result["stats"]["rate_limit_retries"]} Stories: {result["stories_status"]}')
+        
+        if profile_mediacount != 'unknown':
+            message_parts.append(f'Profile has {profile_mediacount} posts total')
+        if profile_private != 'unknown':
+            message_parts.append(f'Private: {profile_private}')
+            
         return jsonify({
-            'message': f'Downloaded {result["count"]} posts/reels for {target}' + (' + stories' if include_stories else ''),
+            'message': ' | '.join(message_parts),
             'folders': result['folders'],
             'posts': result['posts_meta'],
             'stories': result['stories_meta'],
             'stories_status': result['stories_status'],
             'stats': result['stats'],
+            'profile_info': result['profile_info'],
             'selection': {
                 'include_posts': include_posts,
                 'include_reels': include_reels,
@@ -343,7 +488,14 @@ def download():  # type: ignore
         return jsonify({'error': 'Login required to access this profile.'}), 401
     except instastorysaver.exceptions.ConnectionException as e:
         error_msg = str(e).lower()
-        if "challenge_required" in error_msg:
+        if "please wait a few minutes" in error_msg or "heavily rate limiting" in error_msg:
+            return jsonify({
+                'error': 'Instagram is heavily rate limiting your account. This is why no posts are being detected.',
+                'rate_limited': True,
+                'suggestion': 'Please wait 30-60 minutes before trying again. Consider using the extension less frequently.',
+                'details': str(e)
+            }), 429
+        elif "challenge_required" in error_msg:
             return jsonify({
                 'error': 'Instagram challenge required. Please log in through Instagram web/app first and complete any verification.',
                 'challenge_required': True,

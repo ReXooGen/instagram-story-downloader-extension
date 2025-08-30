@@ -45,6 +45,18 @@ async function updateLoginUI() {
       document.getElementById('accountStatus').classList.remove('hidden');
       document.getElementById('currentUser').textContent = data.logged_in_as;
       document.getElementById('loginForm').classList.add('hidden');
+      
+      // Show rate limiting warning if present
+      if (data.status === 'rate_limited' && data.warning) {
+        document.getElementById('loginStatus').textContent = '⚠️ ' + data.warning;
+        document.getElementById('loginStatus').style.color = 'orange';
+        document.getElementById('loginStatus').style.fontSize = '11px';
+      } else {
+        document.getElementById('loginStatus').textContent = '';
+        document.getElementById('loginStatus').style.color = '';
+        document.getElementById('loginStatus').style.fontSize = '';
+      }
+      
       await updateAccountSelector(data.logged_in_as);
     } else {
       // Show login form
@@ -75,10 +87,10 @@ async function updateAccountSelector(currentUser = null) {
       item.className = `account-item ${account.username === currentUser ? 'active' : ''}`;
       item.innerHTML = `
         <span>@${account.username}</span>
-        <span style="cursor:pointer;color:#dc3545;" onclick="removeAccount('${account.username}')">×</span>
+        <span style="cursor:pointer;color:#dc3545;" onclick="removeAccount('${account.username}')">X</span>
       `;
       item.onclick = (e) => {
-        if (e.target.textContent !== '×') {
+        if (e.target.textContent !== 'X') {
           switchToAccount(account.username, account.password);
         }
       };
@@ -112,27 +124,47 @@ async function login() {
     });
     const data = await resp.json();
     if (!resp.ok) {
-      if (data.challenge_required || data.checkpoint_required) {
+      if (data.rate_limited || (data.error && data.error.includes("wait a few minutes"))) {
+        document.getElementById('loginStatus').textContent = 
+          'Rate Limited\n\n' +
+          'Instagram is limiting requests.\n' +
+          'Please wait 10-15 minutes and try again.';
+        document.getElementById('loginStatus').style.fontSize = '11px';
+        document.getElementById('loginStatus').style.whiteSpace = 'pre-line';
+        document.getElementById('loginStatus').style.color = 'orange';
+      } else if (data.challenge_required || data.checkpoint_required) {
         document.getElementById('loginStatus').textContent = 
           '⚠️ ' + data.error + '\n\n' +
-          '📱 Steps to fix:\n' +
+          'Steps to fix:\n' +
           '1. Open Instagram.com in your browser\n' +
           '2. Log in and complete any verification\n' +
           '3. Return here and try again';
         document.getElementById('loginStatus').style.fontSize = '11px';
         document.getElementById('loginStatus').style.whiteSpace = 'pre-line';
+        document.getElementById('loginStatus').style.color = 'orange';
       } else {
         throw new Error(data.error || 'Login failed');
       }
       return;
     }
     
+    // Check for warnings in successful responses
+    if (data.warning) {
+      document.getElementById('loginStatus').textContent = 
+        '✓ ' + data.message + '\n⚠️ ' + data.warning;
+      document.getElementById('loginStatus').style.fontSize = '11px';
+      document.getElementById('loginStatus').style.whiteSpace = 'pre-line';
+      document.getElementById('loginStatus').style.color = 'orange';
+    } else {
+      document.getElementById('loginStatus').textContent = data.message;
+      document.getElementById('loginStatus').style.fontSize = '';
+      document.getElementById('loginStatus').style.whiteSpace = '';
+      document.getElementById('loginStatus').style.color = '';
+    }
+    
     // Save credentials on successful login
     await saveAccount(u, p);
     
-    document.getElementById('loginStatus').textContent = data.message;
-    document.getElementById('loginStatus').style.fontSize = '';
-    document.getElementById('loginStatus').style.whiteSpace = '';
     // Clear password field on successful login for security
     document.getElementById('loginPass').value = '';
     
@@ -174,13 +206,13 @@ async function downloadSelected() {
     if (!resp.ok) {
       if (data.challenge_required) {
         document.getElementById('result').textContent = 
-          '⚠️ Instagram Challenge Required\n\n' +
-          '📱 Please follow these steps:\n' +
+          'Instagram Challenge Required\n\n' +
+          'Please follow these steps:\n' +
           '1. Open Instagram.com in your browser\n' +
           '2. Log in to your account\n' +
           '3. Complete any verification/challenges\n' +
           '4. Return here and try again\n\n' +
-          '💡 Tip: Try waiting 10-15 minutes before retrying';
+          'Tip: Try waiting 10-15 minutes before retrying';
         document.getElementById('result').style.fontSize = '11px';
         document.getElementById('result').style.whiteSpace = 'pre-line';
         return;
@@ -190,18 +222,18 @@ async function downloadSelected() {
       const errorMsg = data.error || 'Request failed';
       if (errorMsg.includes('Please wait a few minutes') || errorMsg.includes('401 Unauthorized')) {
         document.getElementById('result').textContent = 
-          '⏱️ Instagram Rate Limit Detected\n\n' +
-          '📱 Instagram is temporarily blocking requests.\n' +
+          'Instagram Rate Limit Detected\n\n' +
+          'Instagram is temporarily blocking requests.\n' +
           'This happens when too many requests are made.\n\n' +
-          '💡 Solutions:\n' +
-          '• Wait 10-15 minutes before trying again\n' +
-          '• Try with a different account\n' +
-          '• Increase delay between requests\n' +
-          '• Reduce the download limit\n\n' +
-          '⚙️ Suggested settings:\n' +
-          '• Delay: 3-5 seconds\n' +
-          '• Limit: 3-5 posts\n' +
-          '• Backoff: 30 seconds';
+          'Solutions:\n' +
+          'Wait 10-15 minutes before trying again\n' +
+          'Try with a different account\n' +
+          'Increase delay between requests\n' +
+          'Reduce the download limit\n\n' +
+          'Suggested settings:\n' +
+          'Delay: 3-5 seconds\n' +
+          'Limit: 3-5 posts\n' +
+          'Backoff: 30 seconds';
         document.getElementById('result').style.fontSize = '11px';
         document.getElementById('result').style.whiteSpace = 'pre-line';
         return;
@@ -235,8 +267,8 @@ async function loginWithBrowser() {
     if (!resp.ok) {
       if (data.browser_cookies_failed) {
         document.getElementById('loginStatus').textContent = 
-          '⚠️ Browser cookies failed\n\n' +
-          '📱 Please:\n' +
+          'Browser cookies failed\n\n' +
+          'Please:\n' +
           '1. Log in to Instagram.com in your browser\n' +
           '2. Make sure you stay logged in\n' +
           '3. Try this button again\n\n' +
