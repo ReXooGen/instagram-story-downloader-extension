@@ -56,11 +56,15 @@ The server will start on `http://localhost:5000`
 
 ### 2. Use the Chrome Extension
 1. Click the extension icon in your browser
-2. Enter your Instagram username and password to login
+2. **Login Options:**
+   - **Browser Cookies (Recommended)**: Log in to Instagram.com first, then click "Use Browser Cookies"
+   - **Username/Password**: Enter your credentials directly
 3. Enter the target Instagram username
 4. Select content types (Posts, Reels, Stories)
 5. Set limits and delays if needed
 6. Click "Download Selected Content"
+
+> 💡 **Tip**: Use "Browser Cookies" if you get challenge_required errors - it's more reliable!
 
 ### 3. Find Your Downloads
 Downloaded content will be saved to:
@@ -107,6 +111,39 @@ The backend includes built-in rate limiting to avoid Instagram restrictions:
 ### Download Location
 Default: `Pictures/IGStoryDownloader/`
 Modify in `backend_server.py` if needed.
+
+## Troubleshooting
+
+### "Challenge Required" Error
+
+If you encounter a "challenge_required" error, Instagram is asking for additional verification. Here are solutions:
+
+#### Method 1: Browser Cookies (Recommended)
+1. Log in to [Instagram.com](https://instagram.com) in your browser
+2. Complete any verification challenges that appear
+3. Keep the Instagram tab open and logged in
+4. In the extension, click "Use Browser Cookies" instead of entering username/password
+5. This method bypasses the challenge since you're already verified in the browser
+
+#### Method 2: Wait and Retry
+1. Wait 10-15 minutes before trying again
+2. Instagram's rate limiting may reset
+3. Try downloading from a different account first
+
+#### Method 3: Complete Web Verification
+1. Log in to Instagram.com in your browser
+2. Complete any phone/email verification requested
+3. Try the extension again after verification is complete
+
+### Other Common Issues
+
+**"Profile not found"**: Check the username spelling, or the account may be deleted/suspended.
+
+**"Login required"**: The target account is private. You need to log in and follow them first.
+
+**"Connection timeout"**: Instagram servers may be busy. Wait a few minutes and retry.
+
+**Backend not running**: Make sure you started the Flask server (`python backend_server.py`).
 
 ## Development
 
