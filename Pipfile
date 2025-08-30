@@ -22,3 +22,6 @@ requests = "*"
 browser-cookie3 = "*"
 flask = "*"
 flask-cors = "*"
+
+[requires]
+python_version = "3.9"

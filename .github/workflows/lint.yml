@@ -1,6 +1,12 @@
-name: PyLint and MyPy
+name: PyLint and MyPy (IG Story Downloader)
 
-on: [push, pull_request]
+on: 
+  push:
+    tags:
+      - 'v*'  # Only run on version tags
+  pull_request:
+    branches:
+      - 'never-run'  # Only run on PR to a branch that doesn't exist
 
 jobs:
   lint:
@@ -11,7 +17,7 @@ jobs:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
     steps:
-      - name: Checkout Instaloader Repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -23,6 +29,6 @@ jobs:
           python -m pip install pipenv==2024.2.0
           pipenv --python `python --version | grep -Eo '3\.[0-9]+'` sync --dev
       - name: PyLint
-        run: pipenv --python `python --version | grep -Eo '3\.[0-9]+'` run pylint instaloader
+        run: pipenv --python `python --version | grep -Eo '3\.[0-9]+'` run pylint instastorysaver
       - name: MyPy
-        run: pipenv --python `python --version | grep -Eo '3\.[0-9]+'` run mypy -m instaloader
+        run: pipenv --python `python --version | grep -Eo '3\.[0-9]+'` run mypy -m instastorysaver

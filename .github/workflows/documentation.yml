@@ -1,13 +1,19 @@
 name: "Documentation"
 
-on: [push, pull_request]
+on:
+  push:
+    tags:
+      - 'v*'  # Only run on version tags
+  pull_request:
+    branches:
+      - 'never-run'  # Only run on PR to a branch that doesn't exist
 
 jobs:
   docs:
     name: "Documentation"
     runs-on: ubuntu-latest
     steps:
-      - name: "Checkout Instaloader Repository"
+      - name: "Checkout Repository"
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # needed for building docs
@@ -23,10 +29,9 @@ jobs:
       - name: "Build Documentation"
         run: pipenv --python `python --version | grep -Eo '3\.[0-9]+'` run make -C docs html SPHINXOPTS="-W -n"
       - name: "Deploy Documentation"
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: master
-          repository-name: instaloader/instaloader.github.io
+          branch: main
           folder: docs/_build/html
-          token: ${{ secrets.PAGES_DEPLOYMENT_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}

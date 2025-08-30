@@ -1,13 +1,16 @@
-name: Windows EXE build
+name: Windows EXE build (IG Story Downloader)
 
-on: [push, pull_request]
+on:
+  push:
+    tags:
+      - 'v*'  # Only run on version tags
 
 jobs:
   build:
     name: Windows EXE build
     runs-on: windows-latest
     steps:
-      - name: Checkout Instaloader repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
       - name: Setup Python
         uses: actions/setup-python@v5
