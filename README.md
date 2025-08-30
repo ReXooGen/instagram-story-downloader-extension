@@ -137,6 +137,11 @@ If you encounter a "challenge_required" error, Instagram is asking for additiona
 
 ### Other Common Issues
 
+**"No such file or directory" session error**: 
+- This occurs when usernames contain spaces or special characters
+- The extension automatically handles this by sanitizing filenames
+- Session files are stored in `%LOCALAPPDATA%\Instaloader\` on Windows
+
 **"Profile not found"**: Check the username spelling, or the account may be deleted/suspended.
 
 **"Login required"**: The target account is private. You need to log in and follow them first.
