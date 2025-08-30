@@ -34,7 +34,9 @@ def _get_config_dir() -> str:
         if localappdata is not None:
             return os.path.join(localappdata, "Instaloader")
         # legacy fallback - store in temp dir if %LOCALAPPDATA% is not set
-        return os.path.join(tempfile.gettempdir(), ".instaloader-" + getpass.getuser())
+        # Sanitize username to avoid path issues with spaces
+        safe_username = getpass.getuser().replace(" ", "_").replace("\\", "_")
+        return os.path.join(tempfile.gettempdir(), ".instaloader-" + safe_username)
     # on Unix, use ~/.config/instaloader
     return os.path.join(os.getenv("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "instaloader")
 
@@ -42,14 +44,22 @@ def _get_config_dir() -> str:
 def get_default_session_filename(username: str) -> str:
     """Returns default session filename for given username."""
     configdir = _get_config_dir()
-    sessionfilename = "session-{}".format(username)
+    # Ensure config directory exists
+    os.makedirs(configdir, exist_ok=True)
+    # Sanitize username for filename
+    safe_username = username.replace(" ", "_").replace("\\", "_").replace("/", "_")
+    sessionfilename = "session-{}".format(safe_username)
     return os.path.join(configdir, sessionfilename)
 
 
 def get_legacy_session_filename(username: str) -> str:
     """Returns legacy (until v4.4.3) default session filename for given username."""
-    dirname = tempfile.gettempdir() + "/" + ".instaloader-" + getpass.getuser()
-    filename = dirname + "/" + "session-" + username
+    safe_user = getpass.getuser().replace(" ", "_").replace("\\", "_")
+    safe_username = username.replace(" ", "_").replace("\\", "_").replace("/", "_")
+    dirname = os.path.join(tempfile.gettempdir(), ".instaloader-" + safe_user)
+    # Ensure directory exists
+    os.makedirs(dirname, exist_ok=True)
+    filename = os.path.join(dirname, "session-" + safe_username)
     return filename.lower()
 
 

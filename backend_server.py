@@ -183,7 +183,9 @@ def login():
             success = False
             for browser in browsers:
                 try:
-                    L.load_session_from_file(ig_user or "browser_session")
+                    # Create a safe session name for browser cookies
+                    session_name = ig_user or "browser_session"
+                    L.load_session_from_file(session_name)
                     if L.context.is_logged_in:
                         success = True
                         break
@@ -191,7 +193,11 @@ def login():
                     L.context.load_cookies_from_browser(browser)
                     if L.context.is_logged_in:
                         _LOGIN_USER = L.context.username or "browser_user"
-                        L.save_session_to_file()
+                        # Save with safe filename
+                        try:
+                            L.save_session_to_file()
+                        except Exception as save_err:
+                            L.context.log(f"Warning: Could not save session: {save_err}")
                         success = True
                         break
                 except Exception as e:
@@ -212,11 +218,32 @@ def login():
             })
         else:
             L.context.log("Attempting login with username/password...")
-            L.load_session_from_file(ig_user)  # try existing session file first
-            if not L.context.is_logged_in or L.test_login() != ig_user:
-                L.context.log("Session file invalid or for different user, logging in fresh...")
+            try:
+                L.load_session_from_file(ig_user)  # try existing session file first
+                if not L.context.is_logged_in or L.test_login() != ig_user:
+                    L.context.log("Session file invalid or for different user, logging in fresh...")
+                    L.login(ig_user, ig_pass)
+                    try:
+                        L.save_session_to_file()
+                    except Exception as save_err:
+                        L.context.log(f"Warning: Could not save session to file: {save_err}")
+                        # Continue anyway - login was successful
+            except FileNotFoundError:
+                # No existing session file, try fresh login
+                L.context.log("No existing session file, logging in fresh...")
                 L.login(ig_user, ig_pass)
-                L.save_session_to_file()
+                try:
+                    L.save_session_to_file()
+                except Exception as save_err:
+                    L.context.log(f"Warning: Could not save session to file: {save_err}")
+            except Exception as session_err:
+                L.context.log(f"Session file error: {session_err}, trying fresh login...")
+                L.login(ig_user, ig_pass)
+                try:
+                    L.save_session_to_file()
+                except Exception as save_err:
+                    L.context.log(f"Warning: Could not save session to file: {save_err}")
+                    
             _LOGIN_USER = ig_user
             return jsonify({"message": f"Logged in as {ig_user}", "logged_in": True})
             
