@@ -50,7 +50,26 @@ def download_media(target_username: str,
                    backoff: float,
                    stories_limit: int):
     L = get_loader()
-    profile = instastorysaver.Profile.from_username(L.context, target_username)
+    
+    # Try to get profile with better error handling
+    try:
+        profile = instastorysaver.Profile.from_username(L.context, target_username)
+    except Exception as e:
+        error_msg = str(e).lower()
+        if "challenge_required" in error_msg:
+            raise instastorysaver.exceptions.ConnectionException(
+                f"Instagram requires additional verification for this account. "
+                f"Try logging in through a web browser first, complete any challenges, "
+                f"then try again. Error: {str(e)}"
+            )
+        elif "not found" in error_msg or "404" in error_msg:
+            raise instastorysaver.exceptions.QueryReturnedNotFoundException(f"Profile '{target_username}' not found")
+        elif "private" in error_msg or "login" in error_msg:
+            raise instastorysaver.exceptions.LoginRequiredException(
+                f"Profile '{target_username}' is private and requires login"
+            )
+        else:
+            raise
     timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
     session_dir = os.path.join(DOWNLOAD_DIR, target_username, timestamp)
     posts_dir = os.path.join(session_dir, 'posts')
@@ -150,20 +169,77 @@ def login():
     data = request.get_json(force=True, silent=True) or {}
     ig_user = data.get('username')
     ig_pass = data.get('password')
-    if not ig_user or not ig_pass:
-        return jsonify({"error": "username and password required"}), 400
+    use_browser_cookies = data.get('use_browser_cookies', False)
+    
+    if not use_browser_cookies and (not ig_user or not ig_pass):
+        return jsonify({"error": "username and password required (or set use_browser_cookies)"}), 400
+    
     L = get_loader()
     try:
-        L.context.log("Attempting login...")
-        L.load_session_from_file(ig_user)  # try existing session file first
-        if not L.context.is_logged_in or L.test_login() != ig_user:
-            L.context.log("Session file invalid or for different user, logging in fresh...")
-            L.login(ig_user, ig_pass)
-            L.save_session_to_file()
-        _LOGIN_USER = ig_user
-        return jsonify({"message": f"Logged in as {ig_user}", "logged_in": True})
+        if use_browser_cookies:
+            L.context.log("Attempting to load browser cookies...")
+            # Try different browsers in order of preference
+            browsers = ['chrome', 'edge', 'firefox', 'opera', 'safari']
+            success = False
+            for browser in browsers:
+                try:
+                    L.load_session_from_file(ig_user or "browser_session")
+                    if L.context.is_logged_in:
+                        success = True
+                        break
+                    L.context.log(f"Trying {browser} cookies...")
+                    L.context.load_cookies_from_browser(browser)
+                    if L.context.is_logged_in:
+                        _LOGIN_USER = L.context.username or "browser_user"
+                        L.save_session_to_file()
+                        success = True
+                        break
+                except Exception as e:
+                    L.context.log(f"Failed to load {browser} cookies: {e}")
+                    continue
+            
+            if not success:
+                return jsonify({
+                    "error": "Could not load valid Instagram session from any browser. "
+                            "Please log in to Instagram.com in your browser first.",
+                    "browser_cookies_failed": True
+                }), 401
+            
+            return jsonify({
+                "message": f"Logged in using browser cookies as {_LOGIN_USER}", 
+                "logged_in": True,
+                "method": "browser_cookies"
+            })
+        else:
+            L.context.log("Attempting login with username/password...")
+            L.load_session_from_file(ig_user)  # try existing session file first
+            if not L.context.is_logged_in or L.test_login() != ig_user:
+                L.context.log("Session file invalid or for different user, logging in fresh...")
+                L.login(ig_user, ig_pass)
+                L.save_session_to_file()
+            _LOGIN_USER = ig_user
+            return jsonify({"message": f"Logged in as {ig_user}", "logged_in": True})
+            
     except Exception as e:
-        return jsonify({"error": str(e)}), 401
+        error_msg = str(e).lower()
+        if "challenge_required" in error_msg:
+            return jsonify({
+                "error": "Instagram requires additional verification (challenge). "
+                        "Please log in through Instagram's website/app first, "
+                        "complete any required verification, then try again.",
+                "challenge_required": True,
+                "suggestion": "Try using browser cookies instead of username/password"
+            }), 401
+        elif "checkpoint_required" in error_msg:
+            return jsonify({
+                "error": "Instagram checkpoint required. Please log in through "
+                        "Instagram's website/app and complete the security check.",
+                "checkpoint_required": True
+            }), 401
+        elif "incorrect" in error_msg or "invalid" in error_msg:
+            return jsonify({"error": "Invalid username or password"}), 401
+        else:
+            return jsonify({"error": str(e)}), 401
 
 
 @app.route('/download')
@@ -201,7 +277,23 @@ def download():  # type: ignore
         return jsonify({'error': 'Profile not found'}), 404
     except instastorysaver.exceptions.LoginRequiredException:
         return jsonify({'error': 'Login required to access this profile.'}), 401
+    except instastorysaver.exceptions.ConnectionException as e:
+        error_msg = str(e).lower()
+        if "challenge_required" in error_msg:
+            return jsonify({
+                'error': 'Instagram challenge required. Please log in through Instagram web/app first and complete any verification.',
+                'challenge_required': True,
+                'suggestion': 'Try logging in through Instagram.com, complete any challenges, then retry.'
+            }), 429
+        else:
+            return jsonify({'error': f'Connection error: {str(e)}'}), 503
     except Exception as e:
+        error_msg = str(e).lower()
+        if "challenge_required" in error_msg:
+            return jsonify({
+                'error': 'Instagram challenge required. Please log in through Instagram web/app first and complete any verification.',
+                'challenge_required': True
+            }), 429
         return jsonify({'error': str(e)}), 500
 
 
