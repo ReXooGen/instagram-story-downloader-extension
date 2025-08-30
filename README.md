@@ -5,11 +5,13 @@ A lightweight Chrome Extension with a local Flask backend to download Instagram 
 ## Features
 
 - 🔧 **Chrome Extension Interface**: Easy-to-use popup with dark theme
-- 📱 **Content Selection**: Choose to download posts, reels, and/or stories
+- � **Multi-Account Management**: Save and switch between Instagram accounts (like Instagram app)
+- �📱 **Content Selection**: Choose to download posts, reels, and/or stories
 - 🔐 **Secure Login**: Uses your Instagram session via Flask backend
 - 📁 **Organized Downloads**: Automatically saves to `Pictures/IGStoryDownloader` with timestamped folders
-- ⚡ **Rate Limiting**: Built-in delays to respect Instagram's limits
+- ⚡ **Rate Limiting**: Built-in delays and intelligent error handling for Instagram's limits
 - 🎯 **Focused Functionality**: Simplified from original Instaloader for story/content downloading
+- 🔄 **Account Switching**: One-click switching between saved accounts without re-entering credentials
 
 ## Installation
 
@@ -56,15 +58,18 @@ The server will start on `http://localhost:5000`
 
 ### 2. Use the Chrome Extension
 1. Click the extension icon in your browser
-2. **Login Options:**
-   - **Username/Password**: Enter your Instagram credentials
-   - **Account Switching**: Use "Logout" button to switch between accounts
+2. **Account Management:**
+   - **First time**: Enter username/password and click "Login"
+   - **Return users**: Select from saved accounts or add new account
+   - **Account switching**: Click on any saved account to switch instantly
+   - **Current account**: Shows "📱 Logged in as: @username" when logged in
+   - **Logout**: Use red "Logout" button to clear current session
 3. Enter the target Instagram username
 4. Select content types (Posts, Reels, Stories)
 5. Set limits and delays if needed
 6. Click "Download Selected Content"
 
-> 💡 **Tip**: Use the red "Logout" button to switch between different Instagram accounts!
+> 💡 **Account Management**: The extension saves your credentials securely in Chrome storage and shows them like Instagram's account switcher!
 
 ### 3. Find Your Downloads
 Downloaded content will be saved to:
@@ -135,6 +140,22 @@ If you encounter a "challenge_required" error, Instagram is asking for additiona
 1. Log in to Instagram.com in your browser
 2. Complete any phone/email verification requested
 3. Try the extension again after verification is complete
+
+### Rate Limiting Issues
+
+**"Please wait a few minutes before you try again" / 401 Unauthorized:**
+- Instagram is temporarily blocking requests due to too many API calls
+- **Solutions:**
+  - Wait 10-15 minutes before retrying
+  - Switch to a different account temporarily
+  - Increase delay between requests (try 3-5 seconds)
+  - Reduce download limits (try 3-5 posts instead of 10+)
+  - Increase backoff time (try 30+ seconds)
+- **Optimal Settings for Rate Limiting:**
+  - Delay: 3-5 seconds
+  - Limit: 3-5 posts
+  - Backoff: 30 seconds
+  - Story Limit: 10-15
 
 ### Other Common Issues
 
