@@ -32,6 +32,13 @@ def get_loader() -> instastorysaver.Instaloader:
     return _LOADER
 
 
+def reset_loader():
+    """Reset the loader instance to allow login with different accounts."""
+    global _LOADER, _LOGIN_USER
+    _LOADER = None
+    _LOGIN_USER = None
+
+
 def _cleanup(folder: str):
     if not os.path.isdir(folder):
         return
@@ -174,6 +181,12 @@ def login():
     if not use_browser_cookies and (not ig_user or not ig_pass):
         return jsonify({"error": "username and password required (or set use_browser_cookies)"}), 400
     
+    # Check if we're trying to login with a different user
+    if _LOGIN_USER and not use_browser_cookies and ig_user != _LOGIN_USER:
+        reset_loader()  # Reset to allow different account login
+    elif _LOGIN_USER and use_browser_cookies:
+        reset_loader()  # Reset for browser cookies login
+    
     L = get_loader()
     try:
         if use_browser_cookies:
@@ -267,6 +280,19 @@ def login():
             return jsonify({"error": "Invalid username or password"}), 401
         else:
             return jsonify({"error": str(e)}), 401
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    """Logout current user and reset session."""
+    global _LOGIN_USER
+    current_user = _LOGIN_USER
+    reset_loader()
+    return jsonify({
+        "message": f"Logged out {current_user or 'current user'}", 
+        "logged_out": True,
+        "logged_in_as": None
+    })
 
 
 @app.route('/download')

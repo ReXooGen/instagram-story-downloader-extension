@@ -33,6 +33,8 @@ async function login() {
     document.getElementById('loginStatus').textContent = data.message;
     document.getElementById('loginStatus').style.fontSize = '';
     document.getElementById('loginStatus').style.whiteSpace = '';
+    // Clear password field on successful login for security
+    document.getElementById('loginPass').value = '';
   } catch (e) {
     document.getElementById('loginStatus').textContent = 'Error: ' + e.message;
   }
@@ -128,6 +130,26 @@ async function loginWithBrowser() {
   }
 }
 
+async function logout() {
+  document.getElementById('loginStatus').textContent = 'Logging out...';
+  try {
+    const resp = await fetch(API_BASE + '/logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      throw new Error(data.error || 'Logout failed');
+    }
+    document.getElementById('loginStatus').textContent = data.message;
+    document.getElementById('loginUser').value = '';
+    document.getElementById('loginPass').value = '';
+    document.getElementById('result').textContent = '';
+  } catch (e) {
+    document.getElementById('loginStatus').textContent = 'Error: ' + e.message;
+  }
+}
+
 document.getElementById('loginBtn').addEventListener('click', login);
-document.getElementById('browserLoginBtn').addEventListener('click', loginWithBrowser);
+document.getElementById('logoutBtn').addEventListener('click', logout);
 document.getElementById('downloadBtn').addEventListener('click', downloadSelected);
