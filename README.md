@@ -57,14 +57,14 @@ The server will start on `http://localhost:5000`
 ### 2. Use the Chrome Extension
 1. Click the extension icon in your browser
 2. **Login Options:**
-   - **Browser Cookies (Recommended)**: Log in to Instagram.com first, then click "Use Browser Cookies"
-   - **Username/Password**: Enter your credentials directly
+   - **Username/Password**: Enter your Instagram credentials
+   - **Account Switching**: Use "Logout" button to switch between accounts
 3. Enter the target Instagram username
 4. Select content types (Posts, Reels, Stories)
 5. Set limits and delays if needed
 6. Click "Download Selected Content"
 
-> 💡 **Tip**: Use "Browser Cookies" if you get challenge_required errors - it's more reliable!
+> 💡 **Tip**: Use the red "Logout" button to switch between different Instagram accounts!
 
 ### 3. Find Your Downloads
 Downloaded content will be saved to:
@@ -78,6 +78,7 @@ Pictures/IGStoryDownloader/YYYY-MM-DD_HH-MM-SS/
 ## API Endpoints
 
 - `POST /login` - Authenticate with Instagram
+- `POST /logout` - Logout current user and reset session (enables account switching)
 - `GET /download` - Download content with parameters:
   - `username`: Target Instagram username
   - `posts`: Include posts (true/false)
@@ -136,6 +137,11 @@ If you encounter a "challenge_required" error, Instagram is asking for additiona
 3. Try the extension again after verification is complete
 
 ### Other Common Issues
+
+**"Cannot login with different account"**: 
+- Use the red "Logout" button in the extension first
+- This clears the current session and allows switching accounts
+- The backend automatically detects different usernames and resets when needed
 
 **"No such file or directory" session error**: 
 - This occurs when usernames contain spaces or special characters

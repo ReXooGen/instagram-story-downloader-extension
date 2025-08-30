@@ -23,11 +23,31 @@
     .choice input { margin:0; }
     .choice:hover { border-color:var(--accent); }
     footer { margin-top:12px; text-align:center; font-size:10px; color:var(--muted); }
+    .account-status { background:#1a4d3a; border:1px solid #28a745; padding:8px 10px; border-radius:6px; margin-bottom:8px; font-size:11px; color:#90ee90; }
+    .account-selector { background:#12151b; border:1px solid var(--border); border-radius:6px; margin-bottom:8px; }
+    .account-item { padding:8px 10px; border-bottom:1px solid var(--border); cursor:pointer; font-size:11px; display:flex; justify-content:space-between; align-items:center; }
+    .account-item:hover { background:#1b1f27; }
+    .account-item:last-child { border-bottom:none; }
+    .account-item.active { background:#2a1f3d; border-left:3px solid var(--accent); }
+    .add-account { padding:8px 10px; font-size:11px; color:var(--accent); cursor:pointer; text-align:center; }
+    .add-account:hover { background:#1b1f27; }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
   <h2>IG Story Downloader</h2>
-  <fieldset>
+  
+  <!-- Account Status Display -->
+  <div id="accountStatus" class="account-status hidden">
+    📱 Logged in as: <span id="currentUser"></span>
+  </div>
+
+  <!-- Account Selector -->
+  <div id="accountSelector" class="account-selector hidden">
+    <div class="add-account" id="addAccountBtn">+ Add Account</div>
+  </div>
+
+  <fieldset id="loginForm">
     <legend>Login (optional for private / full data)</legend>
     <input type="text" id="loginUser" placeholder="Login Username" />
     <input type="password" id="loginPass" placeholder="Password" />

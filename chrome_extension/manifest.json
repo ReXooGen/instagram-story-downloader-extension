@@ -3,7 +3,7 @@
   "name": "IG Story Downloader",
   "version": "1.0.1",
   "description": "Download Instagram Posts, Reels, and Stories locally (requires local backend).",
-  "permissions": ["activeTab", "scripting"],
+  "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
     "https://www.instagram.com/*",
     "http://localhost:5000/*"

@@ -295,6 +295,17 @@ def logout():
     })
 
 
+@app.route('/status')
+def status():
+    """Get current login status."""
+    L = get_loader()
+    return jsonify({
+        "logged_in": L.context.is_logged_in,
+        "logged_in_as": _LOGIN_USER,
+        "status": "ok"
+    })
+
+
 @app.route('/download')
 def download():  # type: ignore
     target = request.args.get('username')
