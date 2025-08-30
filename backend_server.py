@@ -96,14 +96,23 @@ def download_media(target_username: str,
             )
         else:
             raise
-    timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
-    session_dir = os.path.join(DOWNLOAD_DIR, target_username, timestamp)
-    posts_dir = os.path.join(session_dir, 'posts')
-    reels_dir = os.path.join(session_dir, 'reels')
-    stories_dir = os.path.join(session_dir, 'stories')
-    for d in (posts_dir, reels_dir, stories_dir):
+    
+    # Create user-based folder structure instead of timestamp-based
+    user_dir = os.path.join(DOWNLOAD_DIR, target_username)
+    posts_dir = os.path.join(user_dir, 'posts')
+    reels_dir = os.path.join(user_dir, 'reels')
+    stories_dir = os.path.join(user_dir, 'stories')
+    
+    # Create directories if they don't exist
+    for d in (user_dir, posts_dir, reels_dir, stories_dir):
         os.makedirs(d, exist_ok=True)
-    L.dirname_pattern = os.path.join(session_dir, '{target}')
+    
+    # Set the download pattern to organize files properly
+    L.dirname_pattern = user_dir
+    
+    # Create a session log file to track downloads
+    timestamp = datetime.now(UTC).strftime('%Y%m%d_%H%M%S')
+    session_log = os.path.join(user_dir, f'download_log_{timestamp}.txt')
 
     stats: Dict[str, int] = {"posts_downloaded": 0, "reels_downloaded": 0, "rate_limit_retries": 0}
     posts_meta: List[dict] = []
@@ -115,9 +124,22 @@ def download_media(target_username: str,
         L.context.log("Post iterator created successfully")
         
         posts_found = 0
+        iterator_empty = True
+        
+        # Add timeout protection for the iterator
+        import time
+        iterator_start = time.time()
+        max_iterator_time = 30  # 30 seconds max for iterator
+        
         for post in post_iterator:
+            iterator_empty = False
             posts_found += 1
             L.context.log(f"Processing post {posts_found}: {post.shortcode} (is_video: {post.is_video})")
+            
+            # Check timeout
+            if time.time() - iterator_start > max_iterator_time:
+                L.context.log(f"Iterator timeout after {max_iterator_time} seconds")
+                break
             
             if count >= limit:
                 L.context.log(f"Reached limit of {limit} posts")
@@ -133,7 +155,14 @@ def download_media(target_username: str,
                 try:
                     sub = 'reels' if is_reel_candidate else 'posts'
                     L.context.log(f"Downloading {post.shortcode} to {sub}")
-                    L.download_post(post, target=sub)
+                    
+                    # Set target directory for this specific download
+                    if is_reel_candidate:
+                        L.dirname_pattern = reels_dir
+                    else:
+                        L.dirname_pattern = posts_dir
+                        
+                    L.download_post(post, target=target_username)
                     posts_meta.append({
                         'shortcode': post.shortcode,
                         'date_utc': post.date_utc.isoformat(),
@@ -165,12 +194,35 @@ def download_media(target_username: str,
                 
         L.context.log(f"Total posts found: {posts_found}, downloaded: {count}")
         
-        if posts_found == 0:
-            L.context.log("No posts found - this could be due to:")
-            L.context.log("1. Private account requiring login")
-            L.context.log("2. Instagram anti-bot protection")
-            L.context.log("3. Rate limiting")
-            L.context.log("4. Account genuinely has no posts")
+        if iterator_empty:
+            L.context.log("Post iterator was completely empty - possible causes:")
+            L.context.log("1. Instagram is blocking post enumeration (common anti-bot measure)")
+            L.context.log("2. Account may require different authentication level")
+            L.context.log("3. Posts may be in a format the API doesn't recognize")
+            L.context.log("4. Rate limiting affecting post listing specifically")
+            
+            # Add diagnostic info to the response
+            posts_meta.append({
+                'diagnostic': 'post_iterator_empty',
+                'profile_posts': profile.mediacount,
+                'profile_private': profile.is_private,
+                'login_status': L.context.is_logged_in,
+                'suggestion': 'Instagram may be blocking post enumeration. Try again later or with a different account.',
+                'workaround': 'Consider downloading stories only, or try with a different Instagram account'
+            })
+            
+        elif posts_found == 0:
+            L.context.log("Iterator returned but no posts found - this could be due to:")
+            L.context.log("1. All posts are filtered out (e.g., only reels when posts requested)")
+            L.context.log("2. Posts require higher authentication level")
+            L.context.log("3. Temporary Instagram API restrictions")
+            
+            posts_meta.append({
+                'diagnostic': 'no_posts_in_iterator',
+                'profile_posts': profile.mediacount,
+                'filters': f'include_posts:{include_posts}, include_reels:{include_reels}',
+                'suggestion': 'Try enabling both posts and reels, or check if account has recent content'
+            })
             
     except Exception as e:
         L.context.log(f"Error during post iteration: {e}")
@@ -187,38 +239,93 @@ def download_media(target_username: str,
             grabbed = 0
             found = False
             try:
-                for story in L.get_stories(userids=[profile.userid]):
+                L.context.log(f"Attempting to fetch stories for user ID: {profile.userid}")
+                story_iterator = L.get_stories(userids=[profile.userid])
+                
+                for story in story_iterator:
                     found = True
+                    L.context.log(f"Found story items for {target_username}")
                     for item in story.get_items():
                         if grabbed >= stories_limit:
                             break
                         try:
-                            L.download_storyitem(item, target='stories')
+                            L.context.log(f"Downloading story item {grabbed + 1}")
+                            # Set target directory for stories
+                            L.dirname_pattern = stories_dir
+                            L.download_storyitem(item, target=target_username)
                             stories_meta.append({'date_utc': item.date_utc.isoformat(), 'is_video': item.is_video})
+                            L.context.log(f"Successfully downloaded story item {grabbed + 1}")
                         except Exception as e:
+                            L.context.log(f"Error downloading story item: {e}")
                             stories_meta.append({'error': str(e)})
                         grabbed += 1
                     if grabbed >= stories_limit:
                         break
+                        
+                L.context.log(f"Stories processing complete. Found: {found}, Downloaded: {grabbed}")
                 stories_status = 'no_stories' if not found else ('empty' if grabbed == 0 else 'downloaded')
+                
             except Exception as e:
+                error_msg = str(e).lower()
+                L.context.log(f"Stories error: {e}")
                 stories_status = 'error'
-                stories_meta.append({'error': str(e)})
+                
+                # Provide specific error context
+                if "rate limit" in error_msg or "please wait" in error_msg:
+                    stories_meta.append({
+                        'error': 'rate_limited',
+                        'details': 'Instagram is rate limiting story requests',
+                        'suggestion': 'Wait 30-60 minutes before trying stories again'
+                    })
+                elif "not found" in error_msg or "404" in error_msg:
+                    stories_meta.append({
+                        'error': 'no_stories_available',
+                        'details': 'User has no active stories (24h expiry)',
+                        'suggestion': 'Stories may have expired or user has no current stories'
+                    })
+                elif "private" in error_msg or "login" in error_msg:
+                    stories_meta.append({
+                        'error': 'access_denied',
+                        'details': 'Cannot access stories - may require higher auth level',
+                        'suggestion': 'Try logging in through Instagram web first'
+                    })
+                else:
+                    stories_meta.append({
+                        'error': str(e),
+                        'details': f'Unexpected error during story fetch: {type(e).__name__}',
+                        'suggestion': 'Try again later or check account permissions'
+                    })
 
+    # Clean up empty directories
     for f in (posts_dir, reels_dir, stories_dir):
         _cleanup(f)
+    
+    # Rename story files with proper prefix
     with suppress(Exception):
         for f in os.listdir(stories_dir):
             if f.lower().endswith(('.jpg', '.mp4')) and not f.startswith('story_'):
                 os.replace(os.path.join(stories_dir, f), os.path.join(stories_dir, 'story_' + f))
 
+    # Create session log entry
+    try:
+        with open(session_log, 'w', encoding='utf-8') as log_file:
+            log_file.write(f"Download Session: {timestamp}\n")
+            log_file.write(f"Target: {target_username}\n")
+            log_file.write(f"Posts Downloaded: {stats['posts_downloaded']}\n")
+            log_file.write(f"Reels Downloaded: {stats['reels_downloaded']}\n")
+            log_file.write(f"Stories Status: {stories_status}\n")
+            log_file.write(f"Rate Retries: {stats['rate_limit_retries']}\n")
+    except Exception as e:
+        L.context.log(f"Could not write session log: {e}")
+
     return {
-        'folders': {'base': session_dir, 'posts': posts_dir, 'reels': reels_dir, 'stories': stories_dir},
+        'folders': {'base': user_dir, 'posts': posts_dir, 'reels': reels_dir, 'stories': stories_dir},
         'posts_meta': posts_meta,
         'stories_meta': stories_meta,
         'stories_status': stories_status,
         'stats': stats,
         'count': count,
+        'session_log': session_log,
         'profile_info': {
             'username': target_username,
             'mediacount': profile.mediacount if 'profile' in locals() else 'unknown',
@@ -466,6 +573,10 @@ def download():  # type: ignore
             message_parts.append(f'Profile has {profile_mediacount} posts total')
         if profile_private != 'unknown':
             message_parts.append(f'Private: {profile_private}')
+        
+        # Add folder location info
+        base_folder = result['folders']['base']
+        message_parts.append(f'Saved to: {base_folder}')
             
         return jsonify({
             'message': ' | '.join(message_parts),
@@ -475,6 +586,7 @@ def download():  # type: ignore
             'stories_status': result['stories_status'],
             'stats': result['stats'],
             'profile_info': result['profile_info'],
+            'session_log': result.get('session_log'),
             'selection': {
                 'include_posts': include_posts,
                 'include_reels': include_reels,
