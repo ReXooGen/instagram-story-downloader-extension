@@ -64,6 +64,11 @@ def download_media(target_username: str,
         L.context.log(f"Profile loaded: {target_username}")
         L.context.log(f"Profile info - Posts: {profile.mediacount}, Private: {profile.is_private}")
         
+        # Handle potential mediacount inaccuracy due to rate limiting
+        if profile.mediacount == 0:
+            L.context.log(f"WARNING: Profile reports 0 posts but this may be due to Instagram rate limiting")
+            L.context.log(f"This is common when Instagram restricts API access")
+        
         # Check if profile is private and we need login
         if profile.is_private and not L.context.is_logged_in:
             raise instastorysaver.exceptions.LoginRequiredException(
@@ -239,6 +244,10 @@ def download_media(target_username: str,
             grabbed = 0
             found = False
             try:
+                # Check if profile object is valid and has userid
+                if not hasattr(profile, 'userid') or not profile.userid:
+                    raise Exception("Profile userid not available - profile may not be loaded properly")
+                    
                 L.context.log(f"Attempting to fetch stories for user ID: {profile.userid}")
                 story_iterator = L.get_stories(userids=[profile.userid])
                 
@@ -250,12 +259,31 @@ def download_media(target_username: str,
                             break
                         try:
                             L.context.log(f"Downloading story item {grabbed + 1}")
-                            # Set target directory for stories
+                            
+                            # Use the main loader but set target to stories directory
+                            # Save the original target and restore it after
+                            original_dirname_pattern = L.dirname_pattern
                             L.dirname_pattern = stories_dir
+                            
+                            # Download the story item
                             L.download_storyitem(item, target=target_username)
+                            
+                            # Restore original pattern
+                            L.dirname_pattern = original_dirname_pattern
+                            
+                            # Check if files were downloaded
+                            story_files = [f for f in os.listdir(stories_dir) if f.lower().endswith(('.jpg', '.mp4', '.png'))]
+                            L.context.log(f"Story files found in stories directory: {story_files}")
+                            
                             stories_meta.append({'date_utc': item.date_utc.isoformat(), 'is_video': item.is_video})
                             L.context.log(f"Successfully downloaded story item {grabbed + 1}")
+                            
                         except Exception as e:
+                            # Restore dirname_pattern even on error
+                            try:
+                                L.dirname_pattern = original_dirname_pattern
+                            except:
+                                pass
                             L.context.log(f"Error downloading story item: {e}")
                             stories_meta.append({'error': str(e)})
                         grabbed += 1
@@ -270,30 +298,42 @@ def download_media(target_username: str,
                 L.context.log(f"Stories error: {e}")
                 stories_status = 'error'
                 
-                # Provide specific error context
+                # Provide specific error context with full error message
+                full_error = str(e)
                 if "rate limit" in error_msg or "please wait" in error_msg:
                     stories_meta.append({
                         'error': 'rate_limited',
                         'details': 'Instagram is rate limiting story requests',
-                        'suggestion': 'Wait 30-60 minutes before trying stories again'
+                        'suggestion': 'Wait 30-60 minutes before trying stories again',
+                        'full_error': full_error
                     })
                 elif "not found" in error_msg or "404" in error_msg:
                     stories_meta.append({
                         'error': 'no_stories_available',
                         'details': 'User has no active stories (24h expiry)',
-                        'suggestion': 'Stories may have expired or user has no current stories'
+                        'suggestion': 'Stories may have expired or user has no current stories',
+                        'full_error': full_error
                     })
                 elif "private" in error_msg or "login" in error_msg:
                     stories_meta.append({
                         'error': 'access_denied',
                         'details': 'Cannot access stories - may require higher auth level',
-                        'suggestion': 'Try logging in through Instagram web first'
+                        'suggestion': 'Try logging in through Instagram web first',
+                        'full_error': full_error
+                    })
+                elif "userid not available" in error_msg:
+                    stories_meta.append({
+                        'error': 'profile_userid_missing',
+                        'details': 'Profile userid not available due to rate limiting or access restrictions',
+                        'suggestion': 'Instagram may be blocking profile access. Try with different account or wait.',
+                        'full_error': full_error
                     })
                 else:
                     stories_meta.append({
-                        'error': str(e),
+                        'error': 'unknown_error',
                         'details': f'Unexpected error during story fetch: {type(e).__name__}',
-                        'suggestion': 'Try again later or check account permissions'
+                        'suggestion': 'Try again later or check account permissions',
+                        'full_error': full_error
                     })
 
     # Clean up empty directories
@@ -541,21 +581,35 @@ def status():
         })
 
 
-@app.route('/download')
+@app.route('/download', methods=['GET', 'POST'])
 def download():  # type: ignore
-    target = request.args.get('username')
+    # Handle both GET and POST requests
+    if request.method == 'POST':
+        data = request.get_json()
+        target = data.get('target_username')
+        limit = data.get('limit', 5)
+        delay = data.get('delay', 0)
+        backoff = data.get('backoff', 15)
+        stories_limit = data.get('stories_limit', 50)
+        include_posts = data.get('include_posts', True)
+        include_reels = data.get('include_reels', True)
+        include_stories = data.get('include_stories', False)
+    else:
+        # GET request (legacy support)
+        target = request.args.get('username')
+        try:
+            limit = int(request.args.get('limit', '5'))
+            delay = float(request.args.get('delay', '0') or 0)
+            backoff = float(request.args.get('backoff', '15') or 15)
+            stories_limit = int(request.args.get('stories_limit', '50') or 50)
+        except ValueError:
+            return jsonify({'error': 'numeric parameters invalid'}), 400
+        include_posts = request.args.get('include_posts', '1') in ('1', 'true', 'yes')
+        include_reels = request.args.get('include_reels', '1') in ('1', 'true', 'yes')
+        include_stories = request.args.get('stories', '0') in ('1', 'true', 'yes')
+    
     if not target:
         return jsonify({'error': 'username parameter required'}), 400
-    try:
-        limit = int(request.args.get('limit', '5'))
-        delay = float(request.args.get('delay', '0') or 0)
-        backoff = float(request.args.get('backoff', '15') or 15)
-        stories_limit = int(request.args.get('stories_limit', '50') or 50)
-    except ValueError:
-        return jsonify({'error': 'numeric parameters invalid'}), 400
-    include_posts = request.args.get('include_posts', '1') in ('1', 'true', 'yes')
-    include_reels = request.args.get('include_reels', '1') in ('1', 'true', 'yes')
-    include_stories = request.args.get('stories', '0') in ('1', 'true', 'yes')
     try:
         result = download_media(target, limit, include_posts, include_reels, include_stories, delay, backoff, stories_limit)
         
